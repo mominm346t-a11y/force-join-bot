@@ -1,36 +1,43 @@
- import telebot
-from telebot import types
+ import os
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-BOT_TOKEN = "8754794998:AAFc3psbdmoBbL-tNT-4VOwKvxKlUT-BBQY"
-CHANNEL_USERNAME = "@MIM9614" @MIM9614
+# Render Environment থেকে Token নিবে
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_USERNAME = os.getenv("CHANNEL", "@MIM9614")
+CHANNEL_LINK = f"https://t.me/{CHANNEL_USERNAME.replace('@','')}"
 
-bot = telebot.TeleBot(BOT_TOKEN)
-
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome(message):
-    bot.send_message(message.chat.id, f"Welcome! Please join {CHANNEL_USERNAME} first ❤️")
-
-@bot.message_handler(func=lambda m: True)
-def check_join(message):
+async def check_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type not in ["group", "supergroup"]:
+        return
     try:
-        user_id = message.from_user.id
-        # চেক করছে ইউজার চ্যানেলে জয়েন করেছে কিনা
-        chat_member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        if chat_member.status in ['left', 'kicked']:
-            # জয়েন করে নাই, তাই মেসেজ ডিলিট + ওয়ার্নিং
-            try:
-                bot.delete_message(message.chat.id, message.message_id)
-            except:
-                pass
-            
-            markup = types.InlineKeyboardMarkup()
-            btn = types.InlineKeyboardButton(text="Join Channel", url=f"https://t.me/{CHANNEL_USERNAME.replace('@','')}")
-            markup.add(btn)
-            
-            bot.send_message(message.chat.id, f"⚠️ @{message.from_user.username or message.from_user.first_name} , মেসেজ করার আগে {CHANNEL_USERNAME} চ্যানেলে জয়েন করতে হবে!", reply_markup=markup)
-        # যদি জয়েন করে থাকে, তাহলে কিছু করবে না, মেসেজ থাকবে
-    except Exception as e:
-        print(e)
+        user_id = update.message.from_user.id
+        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        if member.status in ['left', 'kicked', 'restricted']:
+            raise Exception("Not Joined")
+    except:
+        try:
+            await update.message.delete()
+        except:
+            pass
+        keyboard = [[InlineKeyboardButton("✅ Join Channel", url=CHANNEL_LINK)]]
+        await update.message.reply_text(
+            f"⚠️ {update.message.from_user.first_name}, গ্রুপে কথা বলতে হলে আগে আমাদের চ্যানেল জয়েন করতে হবে!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
-print("Bot Started...")
-bot.infinity_polling()
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Bot চালু আছে! Channel: {CHANNEL_USERNAME}")
+
+def main():
+    if not BOT_TOKEN:
+        print("ERROR: BOT_TOKEN not set in Environment Variables!")
+        return
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_join))
+    print("Bot Started...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
